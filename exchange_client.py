@@ -371,15 +371,17 @@ class AgentExchangeClient:
                     logger.warning(f"No position found to set SL for {symbol}")
                     return False
                 hold_side = "long" if position.side == "LONG" else "short"
-                await self.exchange.private_mix_post_v2_mix_order_place_pos_tpsl({
+                await self.exchange.private_mix_post_v2_mix_order_place_tpsl_order({
                     "symbol": symbol,
                     "productType": "USDT-FUTURES",
                     "marginMode": "crossed",
                     "marginCoin": "USDT",
+                    "planType": "pos_loss",
+                    "triggerPrice": str(rounded_sl),
+                    "triggerType": "fill_price",
+                    "size": str(position.qty),
                     "holdSide": hold_side,
-                    "stopLossTriggerPrice": str(rounded_sl),
-                    "stopLossTriggerType": "fill_price",
-                    "stopLossExecutePrice": "0",
+                    "delegateType": "market",
                 })
             else:
                 ccxt_symbol = self._to_ccxt_symbol(symbol)
