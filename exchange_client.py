@@ -169,7 +169,7 @@ class AgentExchangeClient:
                 resp = await self.exchange.private_get_account_config()
                 return str(resp["data"][0]["uid"])
             elif self.exchange_id == "bitget":
-                resp = await self.exchange.private_get_api_v2_user_info()
+                resp = await self.exchange.private_spot_get_v2_spot_account_info()
                 return str(resp["data"]["userId"])
             elif self.exchange_id == "bingx":
                 resp = await self.exchange.private_get_openapi_account_v1_uid()
