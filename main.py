@@ -201,6 +201,27 @@ async def _notify_position_closed(symbol: str):
             payload["exit_price"] = str(pnl_info["avgExitPrice"])
         if pnl_info.get("closedPnl") is not None:
             payload["realized_pnl"] = str(pnl_info["closedPnl"])
+        # stopOrderType / orderType으로 exit_reason 판정
+        # SL: stopOrderType="StopLoss" / 수동: Market + stopOrderType 없음 / TP: Limit → 미설정(서버 DB 판단)
+        try:
+            fills = await client.get_recent_fills(symbol, limit=5)
+            recent_fills = [f for f in fills if int(f.get("execTime", 0)) > detected_at_ms - 120_000]
+            if recent_fills:
+                any_sl = any(f.get("stopOrderType") == "StopLoss" for f in recent_fills)
+                any_tp_limit = any(
+                    f.get("orderType") == "Limit" and not f.get("stopOrderType")
+                    for f in recent_fills
+                )
+                if any_sl:
+                    payload["exit_reason"] = "SL_HIT"
+                elif not any_tp_limit:
+                    payload["exit_reason"] = "MANUAL_CLOSE"
+                # TP Limit 체결: exit_reason 미포함 → 서버 tp_filled DB 판단
+                logger.info(
+                    f"[ManualDetect] exit_reason={payload.get('exit_reason', 'none(TP)')} (stopOrderType check)"
+                )
+        except Exception as e:
+            logger.warning(f"[ManualDetect] stopOrderType 조회 실패, 서버 fallback 사용: {e}")
     else:
         # closed_pnl 조회 실패 시 fills로 exit_price 추정 (Bybit API 지연 대응)
         try:
@@ -215,6 +236,19 @@ async def _notify_position_closed(symbol: str):
                 total_fee = sum(float(f.get("execFee", 0)) for f in recent)
                 if total_fee > 0:
                     payload["commission"] = str(round(total_fee, 8))
+                # stopOrderType / orderType으로 exit_reason 판정
+                any_sl = any(f.get("stopOrderType") == "StopLoss" for f in recent)
+                any_tp_limit = any(
+                    f.get("orderType") == "Limit" and not f.get("stopOrderType")
+                    for f in recent
+                )
+                if any_sl:
+                    payload["exit_reason"] = "SL_HIT"
+                elif not any_tp_limit:
+                    payload["exit_reason"] = "MANUAL_CLOSE"
+                logger.info(
+                    f"[ManualDetect] exit_reason={payload.get('exit_reason', 'none(TP)')} (fills fallback stopOrderType check)"
+                )
         except Exception as e:
             logger.warning(f"[ManualDetect] fills fallback failed: {e}")
     await _post_to_central("/api/agent/position-closed", payload)
